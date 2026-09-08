@@ -68,3 +68,5 @@ The working notebook baseline is versioned at `kaggle/grainology_model_base.ipyn
 ## Responsible Use
 
 Forecasts and farm-gate values are decision-support estimates, not guaranteed sale prices. Farm-gate estimates use configurable average transport and handling assumptions; actual costs vary by route, vehicle, load, market fees, and local conditions.
+
+# grainology_main
