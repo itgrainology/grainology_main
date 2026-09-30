@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
@@ -26,9 +28,6 @@ import confirmedPurchaseOrderRoutes from './routes/confirmedPurchaseOrders.js';
 import reportRoutes from './routes/reports.js';
 import uploadRoutes from './routes/uploads.js';
 import supplyTransactionRoutes from './routes/supplyTransactions.js';
-// COMMENTED OUT: Cashfree and Aadhaar verification APIs - using simple registration now
-// import cashfreeKYCRoutes from './routes/cashfreeKYC.js';
-// import sandboxKYCRoutes from './routes/sandboxKYC.js';
 import registrationRoutes from './routes/registration.js';
 import analyticsRoutes from './routes/analytics.js';
 import documentViewRoutes from './routes/documentView.js';
@@ -38,6 +37,9 @@ import agmarknetRoutes from './routes/agmarknet.js';
 import { startAgmarknetCron } from './jobs/agmarknetCron.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -62,9 +64,6 @@ const getMongoConnectionAttempts = () => {
     attempts.push({ label: 'MONGODB_DIRECT_URI', uri: directUri });
   }
 
-  // Some local Windows/ISP DNS setups refuse MongoDB SRV lookups even when
-  // the Atlas hosts themselves are reachable. Keep the public Atlas SRV URI as
-  // the default, but retry with the equivalent seed-list URI for this cluster.
   try {
     const parsed = primaryUri ? new URL(primaryUri) : null;
     if (parsed?.protocol === 'mongodb+srv:' && parsed.host === 'grainology.we2saem.mongodb.net') {
@@ -135,7 +134,6 @@ const getAllowedOrigin = (origin) => {
     return normalized;
   }
 
-  // Allow local network IPs for development testing
   if (normalized.startsWith('http://192.168.') || normalized.startsWith('http://10.')) {
     return normalized;
   }
@@ -170,7 +168,6 @@ const applyCorsHeaders = (req, res) => {
 
 const corsOptions = {
   origin(origin, callback) {
-    // Allow requests with no origin (mobile apps / curl / postman).
     if (!origin) return callback(null, true);
 
     if (getAllowedOrigin(origin)) {
@@ -186,11 +183,9 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-// Apply CORS headers to all responses
 app.use((req, res, next) => {
   applyCorsHeaders(req, res);
 
-  // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
@@ -198,10 +193,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Additional CORS middleware as fallback
 app.use(cors(corsOptions));
 
-// Ensure CORS headers are on all responses including errors
 app.use((req, res, next) => {
   const originalJson = res.json;
   res.json = function(data) {
@@ -211,7 +204,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// trust render proxy for cookies
 app.set('trust proxy', 1);
 
 // -----------------------------
@@ -227,9 +219,6 @@ const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) {
       console.error('❌ MONGODB_URI is not set in .env file');
-      console.error('💡 Please add MONGODB_URI to your .env file');
-      console.error('   Example: MONGODB_URI=mongodb://localhost:27017/grainology');
-      console.error('   Or MongoDB Atlas: MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grainology');
       return false;
     }
 
@@ -240,8 +229,8 @@ const connectDB = async () => {
     for (const attempt of attempts) {
       try {
         conn = await mongoose.connect(attempt.uri, {
-          serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-          socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+          serverSelectionTimeoutMS: 5000,
+          socketTimeoutMS: 45000,
         });
 
         if (attempt.label !== 'MONGODB_URI') {
@@ -262,13 +251,12 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     console.log(`📊 Database: ${conn.connection.name}`);
     
-    // Handle connection events
     mongoose.connection.on('error', (err) => {
       console.error('❌ MongoDB connection error:', err.message);
     });
 
     mongoose.connection.on('disconnected', () => {
-      console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
+      console.warn('⚠️ MongoDB disconnected. Attempting to reconnect...');
     });
 
     mongoose.connection.on('reconnected', () => {
@@ -282,14 +270,7 @@ const connectDB = async () => {
 
     return true;
   } catch (error) {
-    console.error('❌ MongoDB connection failed!');
-    console.error('Error:', error.message);
-    console.error('\n💡 Troubleshooting tips:');
-    console.error('   1. Check your MONGODB_URI in .env file');
-    console.error('   2. If using MongoDB Atlas: Check IP whitelist (allow 0.0.0.0/0 for testing)');
-    console.error('   3. If using local MongoDB: Ensure MongoDB service is running');
-    console.error('   4. Verify your connection string format');
-    console.error('   5. Check your network connection');
+    console.error('❌ MongoDB connection failed!', error.message);
     return false;
   }
 };
@@ -309,7 +290,7 @@ const scheduleDbReconnect = () => {
 (async () => {
   const connected = await connectDB();
   if (!connected) {
-    console.warn('⚠️  Starting API without DB connection. DB-backed routes will return 503 until MongoDB reconnects.');
+    console.warn('⚠️ Starting API without DB connection.');
     scheduleDbReconnect();
   }
 })();
@@ -317,10 +298,6 @@ const scheduleDbReconnect = () => {
 // ----------------------------- 
 // HEALTH CHECK 
 // ----------------------------- 
-app.get('/', (req, res) => {
-  res.status(200).json({ status: "success", message: "Grainology API is running" });
-});
-
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' }); 
 });
@@ -351,15 +328,22 @@ app.use('/api/confirmed-purchase-orders', confirmedPurchaseOrderRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/supply-transactions', supplyTransactionRoutes);
-// COMMENTED OUT: Cashfree and Aadhaar verification APIs - using simple registration now
-// app.use('/api/cashfree/kyc', cashfreeKYCRoutes);
-// app.use('/api/sandbox/kyc', sandboxKYCRoutes);
 app.use('/api/registration', registrationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/documents', documentViewRoutes);
 app.use('/api/site-settings', siteSettingsRoutes);
 app.use('/api/contact-inquiries', contactInquiryRoutes);
 app.use('/api/agmarknet', agmarknetRoutes);
+
+// -----------------------------
+// FRONTEND STATIC FILES & SPA ROUTING
+// -----------------------------
+app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path === '/health') return next();
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
 // -----------------------------
 // ERROR HANDLER
@@ -370,7 +354,6 @@ app.use((err, req, res, next) => {
   
   applyCorsHeaders(req, res);
   
-  // Default to 500 if no status code is set
   const status = res.statusCode === 200 ? 500 : res.statusCode;
   
   res.status(status).json({ 
@@ -380,33 +363,16 @@ app.use((err, req, res, next) => {
 });
 
 // -----------------------------
-// 404
+// 404 FALLBACK FOR API ROUTES
 // -----------------------------
 app.use((req, res) => {
   applyCorsHeaders(req, res);
   res.status(404).json({ error: 'Route not found' });
 });
-// -----------------------------
-// FRONTEND STATIC FILES & SPA
-// -----------------------------
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve static assets from the build/dist directory
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Serve index.html for all non-API web routes
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
 
 // -----------------------------
 // START SERVER
-// ----
+// -----------------------------
 const server = app.listen(PORT, '0.0.0.0', () => {
   startAgmarknetCron();
   console.log(`AI predictions source: ${process.env.AI_PREDICTIONS_SOURCE || 'local_files'}`);
@@ -414,7 +380,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
-// Handle server errors
 server.on('error', (err) => {
   console.error('❌ Server error:', err);
   process.exit(1);
