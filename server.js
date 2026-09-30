@@ -40,6 +40,9 @@ import { startAgmarknetCron } from './jobs/agmarknetCron.js';
 dotenv.config();
 
 const app = express();
+app.get('/', (req, res) => {
+  res.status(200).json({ status: "success", message: "Grainology API is running" });
+});
 const PORT = process.env.PORT || 3001;
 const DB_RETRY_INTERVAL_MS = Number(process.env.DB_RETRY_INTERVAL_MS || 10000);
 let dbRetryTimer = null;
