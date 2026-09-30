@@ -386,6 +386,23 @@ app.use((req, res) => {
   applyCorsHeaders(req, res);
   res.status(404).json({ error: 'Route not found' });
 });
+// -----------------------------
+// FRONTEND STATIC FILES & SPA
+// -----------------------------
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static assets from the build/dist directory
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Serve index.html for all non-API web routes
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
 // -----------------------------
 // START SERVER
